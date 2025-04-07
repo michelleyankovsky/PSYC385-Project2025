@@ -1,0 +1,28 @@
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from scipy.stats import truncnorm
+
+# Parameters for beta
+beta_mean = 0.30
+beta_std = 0.24
+lower_bound = 0   # Lower bound for β
+upper_bound = 1   # Upper bound for β
+
+# Calculate the standardized a and b parameters for truncnorm
+a = (lower_bound - beta_mean) / beta_std
+b = (upper_bound - beta_mean) / beta_std
+
+# Generate 1000 samples from the truncated normal distribution
+beta_samples = truncnorm.rvs(a, b, loc=beta_mean, scale=beta_std, size=1000)
+
+# Plot the resulting distribution
+plt.figure(figsize=(7, 5))
+sns.histplot(beta_samples, bins=30, kde=True, color="green", edgecolor="black")
+plt.title("Truncated Gaussian Distribution of β (0 ≤ β ≤ 1)")
+plt.xlabel("β Value")
+plt.ylabel("Frequency")
+plt.axvline(1, color="red", linestyle="dashed", linewidth=2, label="Upper Bound = 1")
+plt.axvline(0, color="blue", linestyle="dashed", linewidth=2, label="Lower Bound = 0")
+plt.legend()
+plt.show()
