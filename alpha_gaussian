@@ -1,0 +1,27 @@
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from scipy.stats import truncnorm
+
+# Parameters for alpha
+alpha_mean = 0.65 # Mean of α
+alpha_std = 0.33 # Standard deviation of α
+lower_bound = 0.05  # Lower bound for α
+upper_bound = np.inf # No upper bound
+
+# Calculate the standardized parameters for truncnorm:
+a = (lower_bound - alpha_mean) / alpha_std  # For example: (0 - 0.65)/0.33
+b = np.inf  # Upper bound remains infinite
+
+# Generate 1000 samples from the truncated normal distribution for α
+alpha_samples = truncnorm.rvs(a, b, loc=alpha_mean, scale=alpha_std, size=1000)
+
+# Plot the resulting distribution
+plt.figure(figsize=(7, 5))
+sns.histplot(alpha_samples, bins=30, kde=True, color="blue", edgecolor="black")
+plt.title("Truncated Gaussian Distribution of α with Lower Bound at 0.05")
+plt.xlabel("α Value")
+plt.ylabel("Frequency")
+plt.axvline(lower_bound, color="red", linestyle="dashed", linewidth=2, label="Lower Bound = 0.05")
+plt.legend()
+plt.show()
