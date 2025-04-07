@@ -1,0 +1,107 @@
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+from scipy.stats import truncnorm
+
+# --- Define Parameters ---
+num_trials = 10000  # Number of simulated decisions
+
+# Truncated normal distributions for α, β, μ
+def get_truncated_normal(mean, std, lower, upper):
+    a, b = (lower - mean) / std, (upper - mean) / std
+    return truncnorm.rvs(a, b, loc=mean, scale=std)
+
+
+alpha = get_truncated_normal(0.65, 0.33, 0.05, np.inf)  # (α)
+beta = get_truncated_normal(0.30, 0.24, 0, 1)  # (β)
+mu = get_truncated_normal(6.77, 3.01, 0.05, np.inf)  # (μ)
+
+# Decision boundary (where certain and risky are equally valued)
+decision_boundary = 0
+
+# Define risky probabilities and rewards
+prob_risky_options = [0.5, 0.9]
+reward_risky_options = np.linspace(0.25, 4.0, 1000)  # 1000 different risky rewards
+reward_certain = 1  # Fixed certain reward
+
+# --- Simulation: Generate trials ---
+means = np.linspace(-3, 3, num_trials)  # Each trial has a different ΔSV
+percepts = np.random.normal(means, 1.0)  # Perceived values (with noise)
+
+# Compute subjective values using prospect theory functions
+def prospect_theory_value(p, V, alpha, beta):
+    """Computes the subjective value (SV) under prospect theory."""
+    return (p ** (1 - beta)) * (V ** alpha)
+
+
+# Compute choice probability using a logistic function
+def choice_probability(delta_sv, mu):
+    """Computes probability of choosing risky option."""
+    return 1 / (1 + np.exp(-mu * delta_sv))
+
+
+# Generate risky option choices
+# Create arrays to store data
+choices = np.zeros(num_trials)
+delta_sv = np.zeros(num_trials)
+
+for i in range(num_trials):
+    # Randomly choose a risky probability and reward
+    prob_risky = np.random.choice(prob_risky_options)
+    reward_risky = np.random.choice(reward_risky_options)
+
+    # Compute subjective values
+    sv_risky = prospect_theory_value(prob_risky, reward_risky, alpha, beta)
+    sv_certain = reward_certain ** alpha
+    delta_sv[i] = sv_risky - sv_certain  # Difference in subjective values
+
+    # Compute probability of choosing risky
+    p_risky = choice_probability(delta_sv[i], mu)
+
+    # Make a choice based on probability
+    choices[i] = np.random.rand() < p_risky  # 1 = risky, 0 = certain
+
+
+# --- Define Bins for ΔSV ---
+num_bins = 25
+bins = np.linspace(-1, 1, num_bins)
+
+
+# Function to calculate SEM
+def calculate_sem(data):
+    return np.std(data, ddof=1) / np.sqrt(len(data)) if len(data) > 1 else 0
+
+
+# --- Compute Probabilities for Each Bin ---
+bin_centers = []
+prob_list = []
+sem_list = []
+
+
+for i in range(len(bins) - 1):
+    # Define bin range
+    bin_mask = (delta_sv >= bins[i]) & (delta_sv < bins[i + 1])
+
+    # Compute bin center
+    bin_center = (bins[i] + bins[i + 1]) / 2
+    bin_centers.append(bin_center)
+
+
+    if np.any(bin_mask):
+        prob_list.append(np.mean(choices[bin_mask] == 1))
+        sem_list.append(calculate_sem(choices[bin_mask] == 1))
+    else:
+        prob_list.append(0)
+        sem_list.append(0)
+
+# --- Plot Psychometric Curve (Only High & Low Confidence) ---
+plt.figure(figsize=(10, 6))
+plt.errorbar(bin_centers, prob_list, yerr=sem_list, color='blue', marker='o', linestyle='-')
+plt.xlabel('ΔSV (Difference in Subjective Value)')
+plt.ylabel('P(Choosing Risky)')
+plt.title(f'Psychometric Curve (α={alpha:.2f}, β={beta:.2f}, μ={mu:.2f})')
+plt.legend()
+plt.grid(True)
+plt.axhline(0.5, color='grey', linestyle='--', label="Chance Level (0.5)")
+plt.show()
