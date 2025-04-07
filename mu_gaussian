@@ -1,0 +1,27 @@
+ort numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from scipy.stats import truncnorm
+
+# Parameters for mu
+mu_mean = 6.77    # Mean of μ
+mu_std = 3.01     # Standard deviation of μ
+lower_bound = 0.05  # Lower bound for μ
+upper_bound = np.inf  # No upper bound
+
+# Calculate the standardized parameters for truncnorm:
+a = (lower_bound - mu_mean) / mu_std  # a = (0.05 - 6.77) / 3.01
+b = np.inf  # Upper bound remains infinite
+
+# Generate 1000 samples from the truncated normal distribution for μ
+mu_samples = truncnorm.rvs(a, b, loc=mu_mean, scale=mu_std, size=1000)
+
+# Plot the resulting distribution
+plt.figure(figsize=(7, 5))
+sns.histplot(mu_samples, bins=30, kde=True, color="purple", edgecolor="black")
+plt.title("Truncated Gaussian Distribution of μ with Lower Bound at 0.05")
+plt.xlabel("μ Value")
+plt.ylabel("Frequency")
+plt.axvline(lower_bound, color="red", linestyle="dashed", linewidth=2, label="Lower Bound = 0.05")
+plt.legend()
+plt.show()
