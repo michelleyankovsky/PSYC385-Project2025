@@ -1,0 +1,127 @@
+import pandas as pd
+import numpy as np
+from scipy.optimize import minimize
+import matplotlib.pyplot as plt
+from scipy.stats import truncnorm
+
+def get_truncated_normal(mean, std, lower, upper):
+    a, b = (lower - mean) / std, (upper - mean) / std
+    return truncnorm.rvs(a, b, loc=mean, scale=std)
+
+def prospect_theory_value(p, V, alpha, beta):
+    weighted_probability = p ** (1 - beta)
+    subjective_value = weighted_probability * (V ** alpha)
+    return subjective_value
+
+def choice_probability(delta_sv, mu):
+    safe_values = np.clip(-mu * delta_sv, -700, 700)
+    return 1 / (1 + np.exp(safe_values))
+
+# Softmax choice function
+def choice_prob(delta_sv, mu):
+    safe_values = np.clip(-mu * delta_sv, -700, 700)
+    return 1 / (1 + np.exp(safe_values))
+
+# Simulate choice data
+def simulate_data(num_subjects, num_trials):
+    all_data = []
+    true_params = []
+
+    for subj in range(num_subjects):
+        alpha = np.random.uniform(0.3, 1.5)
+        beta = np.random.uniform(0.2, 1.0)
+        mu = np.random.uniform(1.0, 15.0)
+
+        for trial in range(num_trials):
+            p_risky = np.random.choice([0.5, 0.9])
+            reward_risky = np.random.uniform(5, 20)
+            reward_certain = np.random.uniform(1, 20)
+
+            sv_risky = prospect_theory_value(p_risky, reward_risky, alpha, beta)
+            sv_certain = reward_certain ** alpha
+            delta_sv = sv_risky - sv_certain
+
+            pr = choice_prob(delta_sv, mu)
+            choice = np.random.rand() < pr  # 1 = risky, 0 = certain
+
+            all_data.append([subj, trial, p_risky, reward_risky, reward_certain, int(choice)])
+        true_params.append([subj, alpha, beta, mu])
+
+    df = pd.DataFrame(all_data, columns=["subject", "trial", "p_risky", "reward_risky", "reward_certain", "choice"])
+    params_df = pd.DataFrame(true_params, columns=["subject", "alpha_true", "beta_true", "mu_true"])
+    return df, params_df
+
+# Negative log likelihood
+def neg_log_likelihood(params, data):
+    alpha, beta, mu = params
+
+    sv_risky = prospect_theory_value(data["p_risky"], data["reward_risky"], alpha, beta)
+    sv_certain = data["reward_certain"] ** alpha
+    delta_sv = sv_risky - sv_certain
+    p_risky = choice_prob(delta_sv, mu)
+
+    p_risky = np.clip(p_risky, 1e-6, 1 - 1e-6)
+    log_likelihood = np.where(data["choice"] == 1, np.log(p_risky), np.log(1 - p_risky))
+    return -np.sum(log_likelihood)
+
+# Fit parameters per subject
+def fit_parameters(df):
+    recovered = []
+
+    for subj in df["subject"].unique():
+        sub_data = df[df["subject"] == subj]
+        initial = [0.5, 0.5, 5.0]
+        bounds = [(0.01, 2.0), (0.01, 1.0), (0.1, 20.0)]
+        res = minimize(neg_log_likelihood, initial, args=(sub_data,), bounds=bounds)
+
+        if res.success:
+            recovered.append([subj] + list(res.x))
+        else:
+            recovered.append([subj, np.nan, np.nan, np.nan])
+
+    return pd.DataFrame(recovered, columns=["subject", "alpha_fit", "beta_fit", "mu_fit"])
+
+# Compute MSE across trials
+def compute_mse_over_trials(df, true_params, max_trials=100):
+    trial_counts = np.arange(10, max_trials + 1, 10)
+    mse_alpha, mse_beta, mse_mu = [], [], []
+    sem_alpha, sem_beta, sem_mu = [], [], []
+
+    for t in trial_counts:
+        subset = df[df["trial"] < t]
+        fits = fit_parameters(subset)
+        merged = true_params.merge(fits, on="subject")
+
+        diff_alpha = merged["alpha_fit"] - merged["alpha_true"]
+        diff_beta = merged["beta_fit"] - merged["beta_true"]
+        diff_mu = merged["mu_fit"] - merged["mu_true"]
+
+        mse_alpha.append(np.mean(diff_alpha ** 2))
+        mse_beta.append(np.mean(diff_beta ** 2))
+        mse_mu.append(np.mean(diff_mu ** 2))
+
+        sem_alpha.append(np.std(diff_alpha) / np.sqrt(len(merged)))
+        sem_beta.append(np.std(diff_beta) / np.sqrt(len(merged)))
+        sem_mu.append(np.std(diff_mu) / np.sqrt(len(merged)))
+
+    return trial_counts, mse_alpha, mse_beta, mse_mu, sem_alpha, sem_beta, sem_mu
+
+# --- Run full pipeline ---
+num_subjects = 100
+num_trials = 100
+data, true_params = simulate_data(num_subjects, num_trials)
+
+trials, mse_a, mse_b, mse_m, sem_a, sem_b, sem_m = compute_mse_over_trials(data, true_params)
+
+# --- Plot ---
+plt.figure(figsize=(10, 6))
+plt.errorbar(trials, mse_a, yerr=sem_a, label='Alpha MSE', capsize=4)
+plt.errorbar(trials, mse_b, yerr=sem_b, label='Beta MSE', capsize=4)
+plt.errorbar(trials, mse_m, yerr=sem_m, label='Mu MSE', capsize=4)
+plt.xlabel("Number of Trials", fontsize=14)
+plt.ylabel("MSE", fontsize=14)
+plt.title("Parameter Recovery Accuracy Over Trials", fontsize=16)
+plt.legend(fontsize=12)
+plt.grid(True)
+plt.tight_layout()
+plt.show()
