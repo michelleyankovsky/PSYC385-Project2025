@@ -1,0 +1,126 @@
+import numpy as np
+import pandas as pd
+
+pd.set_option('display.max_columns', None)
+pd.set_option('display.max_rows', None)
+import matplotlib.pyplot as plt
+
+
+def prospect_theory_value(p, V, alpha=0.65, beta=0.3, mu=6.77):
+    """
+    Computes the subjective value (SV) of a prospect under the Altered Prospect Theory model.
+
+    :param p: Probability of winning the reward (0 to 1).
+    :param V: Magnitude of the reward.
+    :param alpha: Value sensitivity parameter.
+    :param beta: Probability weighting parameter.
+    :return: Subjective value of the prospect.
+    """
+    weighted_probability = p ** (1 - beta)  # Adjust probability perception
+    subjective_value = weighted_probability * (V ** alpha)  # Compute subjective value
+    return subjective_value
+
+
+def choice_probability(delta_sv, mu=6.77):
+    """
+    Computes the probability of choosing the risky option based on the subjective value difference (ΔSV).
+
+    :param delta_sv: Difference in subjective values (SV_risky - SV_certain).
+    :param mu: Decision noise parameter (higher values = less noise, default = 1).
+    :return: Probability of choosing the risky option.
+    """
+    return 1 / (1 + np.exp(-mu * delta_sv))  # Logistic function
+
+
+def run_simulation(trials=150, alpha=0.65, beta=0.3, mu=6.77):
+    """
+    Runs a simulation of 150 trials, where participants choose between risky and certain options.
+    Probability is always randomly chosen as either 0.5 or 0.9.
+
+    :param trials: Number of trials to simulate.
+    :param alpha: Value sensitivity parameter.
+    :param beta: Probability weighting parameter.
+    :param mu: Decision noise parameter.
+    :return: Pandas DataFrame with trial results.
+    """
+    # Define possible probability and reward options
+    probability_risky_options = [0.5, 0.9]  # Only 0.5 or 0.9
+    reward_risky_options = np.arange(0.25, 4.0, 0.001)  # Possible rewards for risky option
+    reward_certain = 1  # Guaranteed reward for certain option
+
+    # Data storage
+    data = {
+        "Trial": [],
+        "Probability_Risky": [],
+        "Reward_Risky": [],
+        "SV_Risky": [],
+        "SV_Certain": [],
+        "Delta_SV": [],
+        "P_Risky": [],
+        "Choice": []
+    }
+
+    # Simulate trials
+    for trial in range(trials):
+        # Randomly pick a probability of 0.5 or 0.9 and a reward for the risky choice
+        probability_risky = np.random.choice(probability_risky_options)  # Randomly 0.5 or 0.9
+        reward_risky = np.random.choice(reward_risky_options)
+
+        # Compute subjective values
+        sv_risky = prospect_theory_value(probability_risky, reward_risky, alpha, beta)
+        sv_certain = reward_certain ** alpha  # Certain value follows power of alpha
+
+
+        # Compute ΔSV and probability of choosing risky option
+        delta_sv = sv_risky - sv_certain
+        p_risky = choice_probability(delta_sv, mu)
+
+        # Simulate choice based on probability
+        choice = "risky" if np.random.rand() < p_risky else "certain"
+
+        # Store data
+        data["Trial"].append(trial + 1)
+        data["Probability_Risky"].append(probability_risky)
+        data["Reward_Risky"].append(reward_risky)
+        data["SV_Risky"].append(sv_risky)
+        data["SV_Certain"].append(sv_certain)
+        data["Delta_SV"].append(delta_sv)
+        data["P_Risky"].append(p_risky)
+        data["Choice"].append(choice)
+
+    # Convert to DataFrame
+    df = pd.DataFrame(data)
+    return df
+
+
+# Run the simulation for 150 trials and display results
+df_results = run_simulation(trials=150)
+print(df_results.head(150))  # Display first 5 rows
+
+
+# Filter the DataFrame for p = 0.5 and p = 0.9
+df_p_05 = df_results[df_results["Probability_Risky"] == 0.5]
+df_p_09 = df_results[df_results["Probability_Risky"] == 0.9]
+
+# Create scatter plot
+plt.figure(figsize=(7, 5))
+
+# Plot p = 0.5 trials (blue dots)
+plt.scatter(df_p_05["Delta_SV"], df_p_05["P_Risky"], alpha=0.5, color="blue", label="p = 0.5")
+
+# Plot p = 0.9 trials (green dots)
+plt.scatter(df_p_09["Delta_SV"], df_p_09["P_Risky"], alpha=0.5, color="green", label="p = 0.9")
+
+# Add title and labels
+plt.title("ΔSV vs. P(Risky) for p = 0.5 and p = 0.9")
+plt.xlabel("Difference in Subjective Value (ΔSV)")
+plt.ylabel("P(Risky)")
+
+# Add reference line at P = 0.5
+plt.axhline(0.5, linestyle="dashed", color="gray", label="Reference Line (P = 0.5)")
+
+# Add legend
+plt.legend()
+
+# Show plot
+plt.show()
