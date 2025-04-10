@@ -1,8 +1,10 @@
 import pandas as pd
 import numpy as np
-from scipy.optimize import minimize
 import matplotlib.pyplot as plt
+from scipy.optimize import minimize
 from scipy.stats import truncnorm
+
+# --------------------- Helper Functions ---------------------
 
 def get_truncated_normal(mean, std, lower, upper):
     a, b = (lower - mean) / std, (upper - mean) / std
@@ -13,16 +15,12 @@ def prospect_theory_value(p, V, alpha, beta):
     subjective_value = weighted_probability * (V ** alpha)
     return subjective_value
 
-def choice_probability(delta_sv, mu):
-    safe_values = np.clip(-mu * delta_sv, -700, 700)
-    return 1 / (1 + np.exp(safe_values))
-
-# Softmax choice function
 def choice_prob(delta_sv, mu):
     safe_values = np.clip(-mu * delta_sv, -700, 700)
     return 1 / (1 + np.exp(safe_values))
 
-# Simulate choice data
+# --------------------- Data Simulation ---------------------
+
 def simulate_data(num_subjects, num_trials):
     all_data = []
     true_params = []
@@ -42,7 +40,7 @@ def simulate_data(num_subjects, num_trials):
             delta_sv = sv_risky - sv_certain
 
             pr = choice_prob(delta_sv, mu)
-            choice = np.random.rand() < pr  # 1 = risky, 0 = certain
+            choice = np.random.rand() < pr
 
             all_data.append([subj, trial, p_risky, reward_risky, reward_certain, int(choice)])
         true_params.append([subj, alpha, beta, mu])
@@ -51,7 +49,8 @@ def simulate_data(num_subjects, num_trials):
     params_df = pd.DataFrame(true_params, columns=["subject", "alpha_true", "beta_true", "mu_true"])
     return df, params_df
 
-# Negative log likelihood
+# --------------------- Likelihood & Fitting ---------------------
+
 def neg_log_likelihood(params, data):
     alpha, beta, mu = params
 
@@ -64,7 +63,6 @@ def neg_log_likelihood(params, data):
     log_likelihood = np.where(data["choice"] == 1, np.log(p_risky), np.log(1 - p_risky))
     return -np.sum(log_likelihood)
 
-# Fit parameters per subject
 def fit_parameters(df):
     recovered = []
 
@@ -81,11 +79,11 @@ def fit_parameters(df):
 
     return pd.DataFrame(recovered, columns=["subject", "alpha_fit", "beta_fit", "mu_fit"])
 
-# Compute MSE across trials
-def compute_mse_over_trials(df, true_params, max_trials=1000):
-    trial_counts = np.arange(10, max_trials + 1, 100)
-    mse_alpha, mse_beta, mse_mu = [], [], []
-    sem_alpha, sem_beta, sem_mu = [], [], []
+# --------------------- Total MSE Only ---------------------
+
+def compute_total_mse_over_trials(df, true_params, max_trials=1400):
+    trial_counts = np.arange(100, max_trials + 1, 100)
+    mse_total, sem_total = [], []
 
     for t in trial_counts:
         subset = df[df["trial"] < t]
@@ -93,36 +91,32 @@ def compute_mse_over_trials(df, true_params, max_trials=1000):
         merged = true_params.merge(fits, on="subject")
 
         diff_alpha = merged["alpha_fit"] - merged["alpha_true"]
-        diff_beta = merged["beta_fit"] - merged["beta_true"]
-        diff_mu = merged["mu_fit"] - merged["mu_true"]
+        diff_beta  = merged["beta_fit"]  - merged["beta_true"]
+        diff_mu    = merged["mu_fit"]    - merged["mu_true"]
 
-        mse_alpha.append(np.mean(diff_alpha ** 2))
-        mse_beta.append(np.mean(diff_beta ** 2))
-        mse_mu.append(np.mean(diff_mu ** 2))
+        se_total = ((diff_alpha ** 2) + (diff_beta ** 2) + (diff_mu ** 2)) / 3
+        mse_total.append(se_total.mean())
+        sem_total.append(se_total.std(ddof=1) / np.sqrt(len(se_total)))
 
-        sem_alpha.append(np.std(diff_alpha) / np.sqrt(len(merged)))
-        sem_beta.append(np.std(diff_beta) / np.sqrt(len(merged)))
-        sem_mu.append(np.std(diff_mu) / np.sqrt(len(merged)))
+    return trial_counts, mse_total, sem_total
 
-    return trial_counts, mse_alpha, mse_beta, mse_mu, sem_alpha, sem_beta, sem_mu
+# --------------------- Run & Plot ---------------------
 
-# --- Run full pipeline ---
 num_subjects = 100
-num_trials = 1000
+num_trials = 1400
+
 data, true_params = simulate_data(num_subjects, num_trials)
 
-trials, mse_a, mse_b, mse_m, sem_a, sem_b, sem_m = compute_mse_over_trials(data, true_params)
+trials, mse_total, sem_total = compute_total_mse_over_trials(data, true_params)
 
-# --- Plot ---
 plt.figure(figsize=(10, 6))
-plt.errorbar(trials, mse_a, yerr=sem_a, label='Alpha MSE', capsize=4)
-plt.errorbar(trials, mse_b, yerr=sem_b, label='Beta MSE', capsize=4)
-plt.errorbar(trials, mse_m, yerr=sem_m, label='Mu MSE', capsize=4)
+plt.errorbar(trials, mse_total, yerr=sem_total, label='Total MSE', capsize=4, color='black', linestyle='--', linewidth=2)
 plt.xlabel("Number of Trials", fontsize=14)
-plt.ylabel("MSE (log scale)", fontsize=14)
-plt.yscale("log")
-plt.title("Parameter Recovery Accuracy Over Trials", fontsize=16)
+plt.ylabel("Mean Squared Error", fontsize=14)
+plt.title("Total Parameter Recovery Error Over Trials", fontsize=16)
+plt.ylim(10, 40)  # <<<< Set y-axis range here
+plt.xlim(50, 1400)
+plt.grid(True, linestyle='--', linewidth=0.5)
 plt.legend(fontsize=12)
-plt.grid(True, which='both', linestyle='--', linewidth=0.5)
 plt.tight_layout()
 plt.show()
