@@ -115,7 +115,7 @@ plt.xlabel("Number of Trials", fontsize=14)
 plt.ylabel("Mean Squared Error", fontsize=14)
 plt.title("Total Parameter Recovery Error Over Trials", fontsize=16)
 plt.ylim(10, 40)  # <<<< Set y-axis range here
-plt.xlim(50, 1400)
+plt.xlim(100, 1400)
 plt.grid(True, linestyle='--', linewidth=0.5)
 plt.legend(fontsize=12)
 plt.tight_layout()
